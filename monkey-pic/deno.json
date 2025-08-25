@@ -1,0 +1,24 @@
+{
+  "tasks": {
+    "dev": "deno run -A --watch backend/mod.ts"
+  },
+  "lint": {
+    "files": {
+      "include": ["backend/"]
+    }
+  },
+  "fmt": {
+    "files": {
+      "include": ["backend/"]
+    },
+    "options": {
+      "useTabs": false,
+      "lineWidth": 100
+    }
+  },
+  "imports": {
+    "oak": "https://deno.land/x/oak@v12.6.1/mod.ts",
+    "imagescript": "https://deno.land/x/imagescript@1.2.15/mod.ts",
+    "dotenv": "https://deno.land/x/dotenv@v3.2.2/mod.ts"
+  }
+}

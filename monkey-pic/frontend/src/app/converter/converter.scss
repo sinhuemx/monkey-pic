@@ -1,0 +1,18 @@
+/* Three.js preview container */
+.three-preview-container {
+	width: 100%;
+	aspect-ratio: 3 / 2;
+	min-height: 300px;
+}
+.controls-tile {
+  position: sticky;
+  top: 2rem;        /* espacio desde arriba (bajo header fijo si lo tienes) */
+  max-height: calc(100vh - 4rem); /* ocupa la altura visible */
+  overflow-y: auto; /* scroll interno si hay muchos controles */
+}
+/* Opcional: afina espacios en pantallas angostas */
+@media (max-width: 672px) { /* breakpoint Carbon ~md */
+  .bx--btn-set.bx--btn-set--sm {
+    gap: .375rem;
+  }
+}

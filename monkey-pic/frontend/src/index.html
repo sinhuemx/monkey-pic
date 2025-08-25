@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Frontend</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!-- CSP restrictiva que solo permite recursos locales -->
+  <!-- style-src-elem explícito + blob/data para estilos generados en dev -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://localhost:* http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' blob: data:; style-src-elem 'self' 'unsafe-inline' blob: data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'self';">
+  <script>
+    // Proactively block any attempt to load Google Fonts stylesheets (keeps console clean under strict CSP)
+    (function() {
+    const GF_RE = /https?:\/\/fonts\.googleapis\.com/i;
+      const isBlockedLink = (el) => el && el.tagName === 'LINK' && el.rel === 'stylesheet' && GF_RE.test(el.href);
+      const removeBlocked = () => {
+        document.querySelectorAll("link[rel='stylesheet'][href*='fonts.googleapis.com']").forEach(n => {
+      // Log once, without stack to reduce console noise
+      try { console.warn('[CSP][GF] Removed Google Fonts link found in DOM early.'); } catch {}
+          n.remove();
+        });
+      };
+      // Initial sweep
+      removeBlocked();
+      // Observe future insertions
+      const mo = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const n of m.addedNodes) {
+            if (isBlockedLink(n)) {
+              try { console.warn('[CSP][GF] Blocked and removed injected Google Fonts <link>.'); } catch {}
+              n.remove();
+            }
+          }
+        }
+      });
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+      // Guard appendChild / insertBefore
+      const _append = Element.prototype.appendChild;
+      Element.prototype.appendChild = function(child) {
+        if (isBlockedLink(child)) {
+          try { console.warn('[CSP][GF] appendChild blocked Google Fonts link.'); } catch {}
+          return child;
+        }
+        return _append.call(this, child);
+      };
+      const _insertBefore = Element.prototype.insertBefore;
+      Element.prototype.insertBefore = function(newNode, referenceNode) {
+        if (isBlockedLink(newNode)) {
+          try { console.warn('[CSP][GF] insertBefore blocked Google Fonts link.'); } catch {}
+          return newNode;
+        }
+        return _insertBefore.call(this, newNode, referenceNode);
+      };
+
+      // Guard creation & attribute assignment that targets Google Fonts
+      const _createElement = Document.prototype.createElement;
+      Document.prototype.createElement = function(tagName, options) {
+        const el = _createElement.call(this, tagName, options);
+        if (String(tagName).toLowerCase() === 'link') {
+          // Intercept setAttribute('href', ...)
+          const _setAttribute = el.setAttribute;
+          el.setAttribute = function(name, value) {
+            if (String(name).toLowerCase() === 'href' && GF_RE.test(String(value))) {
+              try { console.warn('[CSP][GF] setAttribute blocked Google Fonts href on <link>.'); } catch {}
+              return; // swallow
+            }
+            return _setAttribute.call(this, name, value);
+          };
+          // Intercept direct href assignment
+          try {
+            const desc = Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype, 'href');
+            if (desc && desc.set) {
+              const _set = desc.set;
+              Object.defineProperty(el, 'href', {
+                configurable: true,
+                enumerable: true,
+                get: desc.get ? desc.get.bind(el) : function() { return ''; },
+                set: function(v) {
+                  if (GF_RE.test(String(v))) {
+                    try { console.warn('[CSP][GF] href property assignment blocked for Google Fonts on <link>.'); } catch {}
+                    return; // swallow
+                  }
+                  return _set.call(this, v);
+                }
+              });
+            }
+          } catch {}
+        }
+        return el;
+      };
+    })();
+  </script>
+</head>
+<body class="bx--body">
+  <app-root></app-root>
+</body>
+</html>

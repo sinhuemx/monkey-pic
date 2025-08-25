@@ -1,0 +1,73 @@
+/* Import Carbon Design System styles - using compiled CSS */
+@import '../node_modules/carbon-components/css/carbon-components.css';
+
+/* Import aggressive font blocking to prevent CSP violations */
+@import 'assets/font-blocking.css';
+
+/* Ensure base background/foreground are visible even if Carbon variables are unset */
+html, body, app-root {
+	min-height: 100%;
+}
+body {
+	background-color: #f4f4f4; /* Carbon Gray 10 */
+	color: #161616; /* Carbon Gray 100 */
+}
+
+/* Carbon baseline for body to ensure toggles render correctly */
+body.bx--body {
+	font: inherit;
+}
+
+/* Ensure toggle switch visuals are visible even if some Carbon tokens are missing */
+.bx--toggle {
+	--toggle-track-off: #8d8d8d;   /* Gray 60 */
+	--toggle-track-on: #0f62fe;    /* IBM Blue 60 */
+	--toggle-thumb: #ffffff;
+}
+.bx--toggle-input + .bx--toggle__appearance {
+	background-color: var(--toggle-track-off);
+}
+.bx--toggle-input:checked + .bx--toggle__appearance {
+	background-color: var(--toggle-track-on);
+}
+.bx--toggle__switch {
+	background-color: var(--toggle-thumb);
+}
+
+/* Fallback minimal switch styling if Carbon classes don’t load correctly */
+.toggle-fallback {
+	position: relative; display: inline-block; width: 48px; height: 24px;
+}
+.toggle-fallback input { display: none; }
+.toggle-fallback .track { position:absolute; inset:0; background:#8d8d8d; border-radius:999px; transition:background .2s; }
+.toggle-fallback .thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition:left .2s; }
+.toggle-fallback input:checked ~ .track { background:#0f62fe; }
+.toggle-fallback input:checked ~ .thumb { left:26px; }
+.toggle-fallback.disabled { opacity: .5; pointer-events: none; }
+
+/* Make the download button green (success) using Carbon greens */
+.btn-download {
+	background-color: #24a148 !important; /* Green 50 */
+	border-color: #24a148 !important;
+}
+.btn-download:hover {
+	background-color: #198038 !important; /* Green 60 */
+	border-color: #198038 !important;
+}
+.btn-download:active {
+	background-color: #0e6027 !important; /* Green 70 */
+	border-color: #0e6027 !important;
+}
+
+/* Global resets to allow exact full-viewport centering */
+html, body {
+	height: 100%;
+}
+body {
+	margin: 0;
+}
+
+/* Fix toggle text alignment and spacing (visual) */
+.bx--toggle__label-text {
+	line-height: 1.25rem;
+}

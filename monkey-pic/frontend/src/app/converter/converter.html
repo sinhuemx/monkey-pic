@@ -1,0 +1,302 @@
+<!-- converter.html -->
+<div class="bx--grid bx--grid--full-width" [ngClass]="{ 'fullpage-initial': !file() && !is3ds() }">
+<br>
+  <!-- ===== HEADER (solo si hay archivo) ===== -->
+  <div class="bx--row" *ngIf="file() || is3ds()">
+    <div class="bx--col-sm-4 bx--col-md-8 bx--col-lg-12" style="text-align:center;">
+      <h1 class="bx--type-productive-heading-05">Monkey Pic 🐒📸</h1>
+      <p class="bx--type-body-long-01">Sube una imagen y la convertiremos a un archivo STL para impresión 3D.</p>
+    </div>
+  </div>
+  <br>
+
+  <!-- ===== ESTADO 1 (inicial, centrado full-screen) ===== -->
+  <ng-template #initialState>
+    <div class="bx--row" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
+      <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-4">
+        <section class="bx--tile" style="text-align:center;padding:2rem;">
+          <h2 class="bx--type-productive-heading-04" style="margin:0 0 .5rem;">Monkey Pic 🐒📸</h2>
+          <p class="bx--type-body-long-01" style="margin:0 0 1rem;color:#525252;">Convierte 2D a 3D</p>
+
+          <div class="bx--file"
+               (dragover)="onDragOver($event)"
+               (dragleave)="onDragLeave($event)"
+               (drop)="onDrop($event)">
+            <div class="bx--file__drop-container" role="button" tabindex="0" (click)="fileInputInit.click()">
+              <label for="file-input-init" class="bx--label">Arrastra una imagen aquí o haz clic para seleccionarla</label>
+              <input #fileInputInit id="file-input-init" type="file" class="bx--file-input"
+                     (change)="onFileChange($event)"
+                     accept=".avif,.bmp,.cur,.dds,.dpx,.exr,.fax,.gif,.ico,.jfi,.pbm,.pcx,.png,.psb,.psd,.qoi,.tga,.tiff,.tif,.webp,.ai,.emf,.eps,.ps,.svg,.wmf,.xaml,.txt,.pdf,.zip,.jpg,.jpeg,.jfif,.jpe,image/*,.3ds" />
+            </div>
+          </div>
+
+          <div class="bx--form__helper-text" style="margin-top:.75rem;">
+            Tras elegir un archivo verás controles y vista previa.
+          </div>
+        </section>
+      </div>
+    </div>
+  </ng-template>
+
+  <!-- ===== ESTADO 2 (con archivo) ===== -->
+  <ng-container *ngIf="file() || is3ds(); else initialState">
+    <div class="bx--row bx--form" style="min-height:calc(100vh - 96px);">
+
+      <!-- IZQUIERDA: PREVIEW (md:5, lg:10) -->
+      <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-7" style="display:flex;">
+        <section class="bx--tile" style="flex:1;display:flex;flex-direction:column;gap:.75rem;">
+
+          <!-- Tabs -->
+          <div *ngIf="!is3ds(); else threeDsInfo" class="bx--tabs" role="navigation" style="margin-bottom:.25rem;">
+            <ul class="bx--tabs__nav" role="tablist">
+              <li class="bx--tabs__nav-item" role="presentation">
+                <a class="bx--tabs__nav-link" role="tab"
+                   [attr.aria-selected]="previewMode()==='image'"
+                   [class.bx--tabs__nav-link--selected]="previewMode()==='image'"
+                   (click)="setPreviewMode('image')">Imagen</a>
+              </li>
+              <li class="bx--tabs__nav-item" role="presentation">
+                <a class="bx--tabs__nav-link" role="tab"
+                   [attr.aria-selected]="previewMode()==='relief'"
+                   [class.bx--tabs__nav-link--selected]="previewMode()==='relief'"
+                   (click)="setPreviewMode('relief')">Relieve</a>
+              </li>
+              <li class="bx--tabs__nav-item" role="presentation">
+                <a class="bx--tabs__nav-link" role="tab"
+                   [attr.aria-selected]="previewMode()==='3d'"
+                   [class.bx--tabs__nav-link--selected]="previewMode()==='3d'"
+                   (click)="setPreviewMode('3d')">3D</a>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Área de preview -->
+          <div *ngIf="!is3ds()" style="position:relative;flex:1;">
+            <ng-container [ngSwitch]="previewMode()">
+              <!-- Usa wrapper de aspect-ratio (2x3). El canvas va dentro -->
+              <div *ngSwitchDefault class="bx--aspect-ratio bx--aspect-ratio--2x3" style="width:100%;">
+                <div class="bx--aspect-ratio--object">
+                  <canvas #previewCanvas aria-label="Vista previa"
+                          style="display:block;width:100%;height:100%;"></canvas>
+                </div>
+              </div>
+
+              <div *ngSwitchCase="'3d'" #threeContainer class="three-preview-container"
+                   style="width:100%;height:480px;"></div>
+            </ng-container>
+
+            <!-- Loading -->
+            <div *ngIf="isLoading()" role="status" aria-live="polite"
+                 style="position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.6);">
+              <div class="bx--inline-loading__text">Procesando…</div>
+            </div>
+          </div>
+
+          <!-- Info 3DS -->
+          <ng-template #threeDsInfo>
+            <div class="bx--inline-notification bx--inline-notification--info" role="status">
+              <div class="bx--inline-notification__details">
+                <div class="bx--inline-notification__text-wrapper">
+                  <p class="bx--inline-notification__title">Modelo 3DS cargado</p>
+                  <p class="bx--inline-notification__subtitle">Se convirtió a STL automáticamente. Usa Descargar junto a Restablecer.</p>
+                </div>
+              </div>
+            </div>
+          </ng-template>
+        </section>
+      </div>
+
+      <!-- DERECHA: DROP + CONTROLES (md:3, lg:6) -->
+      <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-5" style="display:flex;">
+        <section class="bx--tile controls-tile" style="flex:1;display:flex;flex-direction:column;gap:1rem;">
+
+             <!-- Drop zone -->
+    <div class="bx--file" 
+         (dragover)="onDragOver($event)" 
+         (dragleave)="onDragLeave($event)" 
+         (drop)="onDrop($event)">
+      <div class="bx--file__drop-container" role="button" tabindex="0" (click)="fileInput.click()">
+        <label for="file-input" class="bx--label">
+          <span *ngIf="!file()">Arrastra una imagen aquí o haz clic para seleccionarla</span>
+          <span *ngIf="file()">Archivo seleccionado: {{ file()?.name }}</span>
+        </label>
+        <input #fileInput id="file-input" type="file" class="bx--file-input"
+               (change)="onFileChange($event)" accept="image/*,.3ds" />
+      </div>
+    </div>
+
+          <!-- Controles (bloques compactos) -->
+          <div *ngIf="!is3ds()" style="flex:1;overflow:auto;">
+            <!-- Dimensiones -->
+            <div>
+              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Dimensiones</h4>
+              <div class="bx--row">
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-4">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="10" [max]="600" [step]="1"
+                                [ngModel]="widthMM()" (ngModelChange)="onWidthSliderChange($event)"
+                                label="Ancho (mm)"></ibm-slider>
+                    <div class="bx--form__helper-text">{{ widthMM() | number:'1.0-0' }} mm</div>
+                  </div>
+                </div>
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-4">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="0" [max]="10" [step]="0.1"
+                                [ngModel]="baseMM()" (ngModelChange)="onBaseSliderChange($event)"
+                                label="Base (mm)"></ibm-slider>
+                    <div class="bx--form__helper-text">{{ baseMM() | number:'1.1-1' }} mm</div>
+                  </div>
+                </div>
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-4">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="0.2" [max]="50" [step]="0.1"
+                                [ngModel]="maxHeightMM()" (ngModelChange)="onHeightSliderChange($event)"
+                                label="Altura máx (mm)"></ibm-slider>
+                    <div class="bx--form__helper-text">{{ maxHeightMM() | number:'1.1-1' }} mm</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Configuración avanzada -->
+            <div>
+              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Configuración Avanzada</h4>
+              <div class="bx--row">
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-3">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="1" [max]="4" [step]="1"
+                                [ngModel]="subdivisionLevel()" (ngModelChange)="onSubdivisionChange($event)"
+                                label="Subdivisión"></ibm-slider>
+                    <div class="bx--form__helper-text">Nivel {{ subdivisionLevel() }}</div>
+                  </div>
+                </div>
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-3">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="0.5" [max]="3.0" [step]="0.1"
+                                [ngModel]="depthMultiplier()" (ngModelChange)="onDepthMultiplierChange($event)"
+                                label="Multiplicador de Profundidad"></ibm-slider>
+                    <div class="bx--form__helper-text">{{ depthMultiplier() | number:'1.1-1' }}x</div>
+                  </div>
+                </div>
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-3">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="0.0" [max]="1.0" [step]="0.1"
+                                [ngModel]="surfaceSmoothing()" (ngModelChange)="onSurfaceSmoothingChange($event)"
+                                label="Suavizado de Superficie"></ibm-slider>
+                    <div class="bx--form__helper-text">{{ surfaceSmoothing() | number:'1.1-1' }}</div>
+                  </div>
+                </div>
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-2">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="0.1" [max]="1.0" [step]="0.1"
+                                [ngModel]="qualityThreshold()" (ngModelChange)="onQualityThresholdChange($event)"
+                                label="Umbral de Calidad"></ibm-slider>
+                    <div class="bx--form__helper-text">{{ qualityThreshold() | number:'1.1-1' }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Calidad / Resolución -->
+            <div>
+              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Calidad</h4>
+              <div class="bx--row">
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-6">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="50" [max]="600" [step]="10"
+                                [ngModel]="sampleMax()" (ngModelChange)="onQualitySliderChange($event)"
+                                label="Resolución (muestras)"></ibm-slider>
+                    <div class="bx--form__helper-text">
+                      {{ sampleMax() | number:'1.0-0' }} · Polígonos estimados: {{ trianglesEstimate() | number }}
+                    </div>
+                  </div>
+                </div>
+                <div class="bx--col-sm-4 bx--col-md-2 bx--col-lg-5">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="1" [max]="9" [step]="2"
+                                [ngModel]="smoothingKernel()" (ngModelChange)="onSmoothingChange($event)"
+                                label="Suavizado"></ibm-slider>
+                    <div class="bx--form__helper-text">Kernel {{ smoothingKernel() }}x{{ smoothingKernel() }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Formato -->
+            <div>
+              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Formato</h4>
+              <div class="bx--row">
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-12">
+                  <div class="bx--select">
+                    <select class="bx--select-input"
+                            [ngModel]="format()" (ngModelChange)="format.set($event)"
+                            name="format" [ngModelOptions]="{ standalone: true }">
+                      <option class="bx--select-option" value="binary">Binario (recomendado)</option>
+                      <option class="bx--select-option" value="ascii">ASCII</option>
+                    </select>
+                  </div>
+                  <div class="bx--form__helper-text">STL binario: más liviano · ASCII: legible</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+      
+<!-- Acciones (fila compacta) -->
+<div class="bx--btn-set bx--btn-set--sm"
+     style="justify-content:flex-start; gap:.5rem; flex-wrap:nowrap;">
+
+  <button
+    (click)="upload()"
+    [disabled]="!file() || isLoading() || is3ds()"
+    class="bx--btn bx--btn--primary bx--btn--sm">
+    <span *ngIf="!isLoading()">Convertir STL</span>
+    <span *ngIf="isLoading()">Convirtiendo…</span>
+  </button>
+
+  <button
+    type="button"
+    (click)="uploadHQ()"
+    [disabled]="!file() || isLoading()"
+    class="bx--btn bx--btn--tertiary bx--btn--sm">
+    HQ 3D
+  </button>
+
+  <button
+    type="button"
+    class="bx--btn bx--btn--secondary bx--btn--sm"
+    (click)="resetControls()"
+    [disabled]="is3ds()">
+    Reset
+  </button>
+
+  <a *ngIf="downloadUrl()"
+     [href]="downloadUrl()"
+     [attr.download]="downloadName()"
+     class="bx--btn bx--btn--primary bx--btn--sm">
+    Descargar STL
+    <span class="bx--tag bx--tag--green" style="margin-left:.5rem;">✓</span>
+  </a>
+</div>
+
+
+
+        </section>
+      </div>
+    </div>
+
+    <!-- Errores -->
+    <div *ngIf="error()" class="bx--row" style="margin-top:1rem;">
+      <div class="bx--col-sm-4 bx--col-md-8 bx--col-lg-12">
+        <div class="bx--inline-notification bx--inline-notification--error" role="alert">
+          <div class="bx--inline-notification__details">
+            <div class="bx--inline-notification__text-wrapper">
+              <p class="bx--inline-notification__title">Error</p>
+              <p class="bx--inline-notification__subtitle">{{ error() }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </ng-container>
+</div>
