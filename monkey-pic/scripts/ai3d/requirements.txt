@@ -1,7 +1,7 @@
-torch
-opencv-python
-numpy
-open3d
-pymeshlab
-pillow
-scipy
+numpy>=1.24
+opencv-python-headless>=4.10
+Pillow>=10.4
+open3d>=0.18
+scipy>=1.11
+# Optional: enable MiDaS depth (installs PyTorch). See platform-specific instructions for Apple Silicon.
+torch>=2.2

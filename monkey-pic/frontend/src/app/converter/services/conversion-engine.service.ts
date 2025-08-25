@@ -56,7 +56,8 @@ export class ConversionEngineService {
       widthMM: Math.round(ui.widthMM),
       baseMM: ui.baseMM,
       maxHeightMM: ui.maxHeightMM,
-      format
+      format,
+      invert: ui.invert
     }));
   }
 }

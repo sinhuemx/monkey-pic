@@ -36,14 +36,15 @@ export class ApiService {
 
   convertImageHQ(
     file: File,
-    options?: { widthMM?: number; baseMM?: number; maxHeightMM?: number; format?: 'stl'|'obj'|'glb' }
+    options?: { widthMM?: number; baseMM?: number; maxHeightMM?: number; format?: 'stl'|'obj'|'glb', invert?: boolean }
   ): Observable<Blob> {
     const form = new FormData();
     form.append('file', file);
     if (options?.widthMM != null) form.append('widthMM', String(options.widthMM));
     if (options?.baseMM != null) form.append('baseMM', String(options.baseMM));
     if (options?.maxHeightMM != null) form.append('maxHeightMM', String(options.maxHeightMM));
-    if (options?.format) form.append('format', options.format);
+  if (options?.format) form.append('format', options.format);
+  if (options?.invert != null) form.append('invert', String(options.invert));
 
     const auth = getAuth();
     return from(auth.currentUser?.getIdToken() ?? Promise.resolve('')).pipe(

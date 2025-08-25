@@ -194,6 +194,19 @@
                     <div class="bx--form__helper-text">{{ qualityThreshold() | number:'1.1-1' }}</div>
                   </div>
                 </div>
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-4">
+                  <div class="bx--form-item">
+                    <label class="bx--label" for="depth-toggle">Depth (beta)
+                      <span *ngIf="depthAvailable()===true" class="bx--tag bx--tag--green" style="margin-left:.25rem;">listo</span>
+                      <span *ngIf="depthAvailable()===false" class="bx--tag bx--tag--red" style="margin-left:.25rem;">no disponible</span>
+                    </label>
+                    <div class="toggle-fallback">
+                      <input id="depth-toggle" type="checkbox" [checked]="useDepth()" (change)="useDepth.set(($any($event.target)).checked)" />
+                      <span></span>
+                    </div>
+                    <div class="bx--form__helper-text">Usa modelo ONNX local para estimar profundidad en el preview 3D.</div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -250,16 +263,16 @@
     (click)="upload()"
     [disabled]="!file() || isLoading() || is3ds()"
     class="bx--btn bx--btn--primary bx--btn--sm">
-    <span *ngIf="!isLoading()">Convertir STL</span>
+    <span *ngIf="!isLoading()">Convertir Relieve</span>
     <span *ngIf="isLoading()">Convirtiendo…</span>
   </button>
 
   <button
     type="button"
-    (click)="uploadHQ()"
+    (click)="convert3D()"
     [disabled]="!file() || isLoading()"
     class="bx--btn bx--btn--tertiary bx--btn--sm">
-    HQ 3D
+    Convertir a 3D
   </button>
 
   <button
@@ -274,7 +287,7 @@
      [href]="downloadUrl()"
      [attr.download]="downloadName()"
      class="bx--btn bx--btn--primary bx--btn--sm">
-    Descargar STL
+    {{ downloadLabel() || 'Descargar' }}
     <span class="bx--tag bx--tag--green" style="margin-left:.5rem;">✓</span>
   </a>
 </div>

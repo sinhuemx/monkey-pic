@@ -17,7 +17,9 @@ import { SliderModule, ToggleModule } from 'carbon-components-angular';
 import { ConversionEngineService } from './services/conversion-engine.service';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { TooltipModule } from 'carbon-components-angular/tooltip';
+import { DepthRuntimeService } from './services/depth-runtime.service';
 
 type PreviewMode = 'image' | 'relief' | '3d';
 
@@ -46,6 +48,7 @@ interface ReliefOptions {
 export class ConverterComponent implements OnDestroy {
   private readonly engine = inject(ConversionEngineService);
   private readonly zone = inject(NgZone);
+  private readonly depthRt = inject(DepthRuntimeService);
 
   readonly file = signal<File | null>(null);
   readonly isDragging = signal(false);
@@ -57,9 +60,19 @@ export class ConverterComponent implements OnDestroy {
   readonly is3ds = computed(() => !!this.file() && /\.3ds$/i.test(this.file()!.name));
 
   readonly downloadUrl = signal<string | null>(null);
-  readonly downloadName = computed(() =>
-    this.file() ? this.file()!.name.replace(/\.[^.]+$/, '') + '.stl' : 'model.stl'
-  );
+  // Track last conversion type and filename/label
+  readonly lastConversion = signal<null | 'relief' | '3d'>(null);
+  readonly lastExt = signal<'stl' | 'obj' | 'glb'>('stl');
+  readonly downloadName = computed(() => {
+    const f = this.file();
+    const ext = this.lastExt();
+    const base = f ? f.name.replace(/\.[^.]+$/, '') : 'model';
+    return `${base}.${ext}`;
+  });
+  readonly downloadLabel = computed(() => {
+    if (!this.downloadUrl()) return '';
+    return this.lastConversion() === '3d' ? 'Descargar 3D' : 'Descargar STL';
+  });
 
   // Controles
   readonly widthMM: WritableSignal<number> = signal(100);
@@ -77,6 +90,9 @@ export class ConverterComponent implements OnDestroy {
   readonly enhanceEdges = signal(false);
   readonly preserveDetails = signal(true);
   readonly adaptiveSubdivision = signal(true);
+  // Prefer depth model (ONNX) when available for 3D preview
+  readonly useDepth = signal(true);
+  readonly depthAvailable: WritableSignal<boolean | null> = signal<boolean | null>(null);
 
   readonly compressionLevel: WritableSignal<0 | 1 | 2 | 3> = signal(1);
   readonly format: WritableSignal<'binary' | 'ascii'> = signal('binary');
@@ -105,6 +121,7 @@ export class ConverterComponent implements OnDestroy {
     animId?: number;
     currentDims?: { w: number; h: number };
   };
+  private lastDepthData: { d: Float32Array; tw: number; th: number; opts: ReliefOptions } | null = null;
 
   constructor() {
     // Initialize the UI with default values, as if 'Restablecer' was pressed
@@ -157,6 +174,18 @@ export class ConverterComponent implements OnDestroy {
         this.zone.runOutsideAngular(() => this.startThreeLoop());
       } else {
         if (this.three?.animId) { cancelAnimationFrame(this.three.animId); this.three.animId = undefined; }
+      }
+    });
+
+    // Effect: probe ONNX model availability when Depth is enabled in 3D tab
+    effect(() => {
+      const wantDepth = this.useDepth();
+      const mode = this.previewMode();
+      if (wantDepth && mode === '3d') {
+        this.depthAvailable.set(null);
+        this.depthRt.isAvailable().then(ok => this.depthAvailable.set(ok)).catch(() => this.depthAvailable.set(false));
+      } else {
+        this.depthAvailable.set(null);
       }
     });
 
@@ -525,40 +554,95 @@ export class ConverterComponent implements OnDestroy {
   };
 
   private buildHeightMeshFromImage(img: HTMLImageElement, opts: ReliefOptions) {
-    // Build a heightfield based on grayscale (reuse grayscale + optional blur)
-    const sample = Math.max(32, Math.min(opts.sampleMax, 400));
-  const ar = img.height / img.width;
+    // Build a heightfield based on grayscale refined with edge-guided unsharp + normalization
+    // Choose processing resolution with a small boost if adaptive/subdivision are enabled (visual only)
+    const boost = (opts.adaptiveSubdivision ? 40 : 0) + ((opts.subdivisionLevel - 1) * 20);
+    const sample = Math.max(32, Math.min(opts.sampleMax + boost, 512));
+    const ar = img.height / img.width;
     const tw = sample;
     const th = Math.max(16, Math.floor(sample * ar));
     const c = document.createElement('canvas'); c.width = tw; c.height = th;
     const cx = c.getContext('2d', { willReadFrequently: true })!;
+    cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
     cx.drawImage(img, 0, 0, tw, th);
-    const data = cx.getImageData(0, 0, tw, th).data;
-    // grayscale
+  const rgba = cx.getImageData(0, 0, tw, th).data;
+    // 1) grayscale in [0,1]
     const g = new Float32Array(tw * th);
-    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
-      const y = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+    for (let i = 0, p = 0; i < rgba.length; i += 4, p++) {
+      const y = 0.2126 * rgba[i] + 0.7152 * rgba[i + 1] + 0.0722 * rgba[i + 2];
       g[p] = (opts.invert ? (255 - y) : y) / 255;
     }
-    // light blur if requested
-    const kernelMap = new Map<number, number>([[1,0],[3,1],[5,2],[7,3],[9,4]]);
-    let radius = kernelMap.get(opts.smoothingKernel) ?? 0;
-    if (opts.surfaceSmoothing > 0.66) radius = Math.max(radius, 2);
-    if (radius > 0) {
-      const t2 = new Float32Array(g.length);
-      for (let y = 0; y < th; y++) {
-        for (let x = 0; x < tw; x++) {
+    // small helpers
+    const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
+    const boxBlur = (src: Float32Array, w: number, h: number, r: number) => {
+      if (r <= 0) return src;
+      const out = new Float32Array(src.length);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
           let acc = 0, count = 0;
-          for (let dy = -radius; dy <= radius; dy++) {
-            for (let dx = -radius; dx <= radius; dx++) {
-              const nx = x + dx, ny = y + dy;
-              if (nx >= 0 && nx < tw && ny >= 0 && ny < th) { acc += g[ny * tw + nx]; count++; }
-            }
+          for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h) { acc += src[ny * w + nx]; count++; }
           }
-          t2[y * tw + x] = acc / count;
+          out[y * w + x] = count ? acc / count : src[y * w + x];
         }
       }
-      g.set(t2);
+      return out;
+    };
+    const sobelMag = (src: Float32Array, w: number, h: number) => {
+      const out = new Float32Array(src.length);
+      const kx = [-1,0,1,-2,0,2,-1,0,1];
+      const ky = [-1,-2,-1,0,0,0,1,2,1];
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          let sx = 0, sy = 0, k = 0;
+          for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+            const v = src[(y + j) * w + (x + i)];
+            sx += v * kx[k]; sy += v * ky[k]; k++;
+          }
+          out[y * w + x] = Math.hypot(sx, sy);
+        }
+      }
+      return out;
+    };
+    const minMax = (src: Float32Array) => {
+      let mn = src[0], mx = src[0];
+      for (let i = 1; i < src.length; i++) { const v = src[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+      return { mn, mx };
+    };
+    // 2) edge-guided unsharp: blur -> high = g - blur -> sharpen = g + alpha(high * edgeWeight)
+    const kernelMap = new Map<number, number>([[1,0],[3,1],[5,2],[7,3],[9,4]]);
+    let baseRadius = kernelMap.get(opts.smoothingKernel) ?? 0;
+    // UI surfaceSmoothing augments blur a bit; preserveDetails reduces it
+    if (opts.surfaceSmoothing > 0.33) baseRadius = Math.max(baseRadius, 1);
+    if (opts.surfaceSmoothing > 0.66) baseRadius = Math.max(baseRadius, 2);
+    if (opts.preserveDetails) baseRadius = Math.max(0, baseRadius - 1);
+    const blur = boxBlur(g, tw, th, baseRadius);
+    const edges = sobelMag(g, tw, th);
+    // normalize edges to [0,1]
+    const { mn: emin, mx: emax } = minMax(edges);
+    const eRange = emax - emin || 1;
+    for (let i = 0; i < edges.length; i++) edges[i] = (edges[i] - emin) / eRange;
+    const sharpenStrength = (opts.enhanceEdges ? 0.6 : 0.25) + (opts.qualityThreshold * 0.2);
+    const refined = new Float32Array(g.length);
+    for (let i = 0; i < g.length; i++) {
+      const high = g[i] - blur[i];
+      const w = 0.5 + 0.5 * edges[i]; // weight more on strong edges
+      refined[i] = clamp01(g[i] + sharpenStrength * high * w);
+    }
+    // 3) soft smoothing pass to remove ringing
+    let finalH = refined;
+    const smoothPass = opts.surfaceSmoothing > 0 ? (opts.surfaceSmoothing < 0.5 ? 1 : 2) : 0;
+    if (smoothPass > 0) finalH = boxBlur(finalH, tw, th, smoothPass);
+    // 4) normalize heights to [0,1] and apply slight gamma to enhance mid-tones
+    const { mn, mx } = minMax(finalH);
+    const invR = 1 / (mx - mn || 1);
+    const gamma = 1.0 / Math.max(0.8, Math.min(1.4, 1.0 + (opts.depthMultiplier - 1.0) * 0.2));
+    for (let i = 0; i < finalH.length; i++) {
+      let v = (finalH[i] - mn) * invR;
+      // optional floor lift using qualityThreshold
+      if (opts.qualityThreshold > 0) v = Math.max(v, opts.qualityThreshold * 0.05);
+      finalH[i] = Math.pow(clamp01(v), gamma);
     }
     // Build plane geometry subdivided as tw x th
     const geo = new THREE.PlaneGeometry(1, ar, tw - 1, th - 1);
@@ -568,7 +652,7 @@ export class ConverterComponent implements OnDestroy {
     for (let i = 0; i < verts.count; i++) {
       const ix = i % tw;
       const iy = Math.floor(i / tw);
-      const h = g[iy * tw + ix];
+      const h = finalH[iy * tw + ix];
       // Add a small base offset to keep non-zero depth consistent with STL preview
       const baseOffset = Math.min(0.05, Math.max(0, this.baseMM() / 50));
       // PlaneGeometry is centered; z is up for us after rotation
@@ -583,6 +667,122 @@ export class ConverterComponent implements OnDestroy {
     return mesh;
   }
 
+  // Build a watertight printable mesh (top surface + bottom + side walls) from a depth map in [0,1]
+  private buildWatertightFromDepth(depth: Float32Array, tw: number, th: number, opts: ReliefOptions) {
+    const widthMM = Math.max(10, this.widthMM());
+    const heightMM = Math.max(10, Math.floor(widthMM * (th / tw)));
+    const segX = tw - 1, segY = th - 1;
+    const vxCount = tw * th;
+    const baseMM = Math.max(0, this.baseMM());
+    const maxHeight = (opts.maxHeightMM || this.maxHeightMM());
+    const depthScale = Math.max(0.1, opts.depthMultiplier || 1.0);
+
+    const positions: number[] = [];
+    const indices: number[] = [];
+
+    const pushVertex = (x: number, y: number, z: number) => { positions.push(x, y, z); };
+    // Generate grid positions (X,Y) and Z for top and bottom
+    const xs = new Array(tw).fill(0).map((_, i) => -widthMM / 2 + (i / (tw - 1)) * widthMM);
+    const ys = new Array(th).fill(0).map((_, j) => -heightMM / 2 + (j / (th - 1)) * heightMM);
+
+    // Top vertices
+    for (let j = 0; j < th; j++) {
+      for (let i = 0; i < tw; i++) {
+        const h = depth[j * tw + i]; // 0..1
+        const z = baseMM + h * maxHeight * depthScale;
+        pushVertex(xs[i], ys[j], z);
+      }
+    }
+    // Bottom vertices (z=0)
+    for (let j = 0; j < th; j++) {
+      for (let i = 0; i < tw; i++) {
+        pushVertex(xs[i], ys[j], 0);
+      }
+    }
+
+    const idxTop = (i: number, j: number) => j * tw + i;
+    const idxBot = (i: number, j: number) => vxCount + j * tw + i;
+
+    // Top faces
+    for (let j = 0; j < segY; j++) {
+      for (let i = 0; i < segX; i++) {
+        const a = idxTop(i, j);
+        const b = idxTop(i + 1, j);
+        const c = idxTop(i, j + 1);
+        const d = idxTop(i + 1, j + 1);
+        // two triangles: (a,b,d) and (a,d,c)
+        indices.push(a, b, d, a, d, c);
+      }
+    }
+    // Bottom faces (reverse winding)
+    for (let j = 0; j < segY; j++) {
+      for (let i = 0; i < segX; i++) {
+        const a = idxBot(i, j);
+        const b = idxBot(i + 1, j);
+        const c = idxBot(i, j + 1);
+        const d = idxBot(i + 1, j + 1);
+        indices.push(a, d, b, a, c, d);
+      }
+    }
+    // Side walls: four edges
+    // Top edge (j=0)
+    for (let i = 0; i < segX; i++) {
+      const tA = idxTop(i, 0), tB = idxTop(i + 1, 0);
+      const bA = idxBot(i, 0), bB = idxBot(i + 1, 0);
+      indices.push(tA, bA, bB, tA, bB, tB);
+    }
+    // Bottom edge (j=th-1)
+    for (let i = 0; i < segX; i++) {
+      const tA = idxTop(i, th - 1), tB = idxTop(i + 1, th - 1);
+      const bA = idxBot(i, th - 1), bB = idxBot(i + 1, th - 1);
+      // opposite winding
+      indices.push(tB, bB, bA, tB, bA, tA);
+    }
+    // Left edge (i=0)
+    for (let j = 0; j < segY; j++) {
+      const tA = idxTop(0, j), tB = idxTop(0, j + 1);
+      const bA = idxBot(0, j), bB = idxBot(0, j + 1);
+      indices.push(tA, bB, bA, tA, tB, bB);
+    }
+    // Right edge (i=tw-1)
+    for (let j = 0; j < segY; j++) {
+      const tA = idxTop(tw - 1, j), tB = idxTop(tw - 1, j + 1);
+      const bA = idxBot(tw - 1, j), bB = idxBot(tw - 1, j + 1);
+      indices.push(tA, bA, bB, tA, bB, tB);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    const posArr = new Float32Array(positions);
+    const idxArr = new Uint32Array(indices);
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    geo.setIndex(new THREE.BufferAttribute(idxArr, 1));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.0, roughness: 0.9, side: THREE.DoubleSide });
+    const mesh = new (THREE as any).Mesh(geo, mat);
+    // Keep orientation consistent with previous preview (XZ ground, Y up)
+    mesh.rotation.x = -Math.PI / 2;
+    return mesh;
+  }
+
+  private sampleGrayDepth(img: HTMLImageElement, tw: number, th: number, invert: boolean): Float32Array {
+    const c = document.createElement('canvas'); c.width = tw; c.height = th;
+    const cx = c.getContext('2d', { willReadFrequently: true })!;
+    cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+    cx.drawImage(img, 0, 0, tw, th);
+    const rgba = cx.getImageData(0, 0, tw, th).data;
+    const out = new Float32Array(tw * th);
+    for (let y = 0; y < th; y++) {
+      for (let x = 0; x < tw; x++) {
+        const i = (y * tw + x) * 4;
+        const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+        let Y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if (invert) Y = 255 - Y;
+        out[y * tw + x] = Y / 255;
+      }
+    }
+    return out;
+  }
+
   private async render3DPreview(file: File) {
     if (!file.type.startsWith('image/')) return;
     if (!this.threeContainer?.nativeElement) {
@@ -595,6 +795,19 @@ export class ConverterComponent implements OnDestroy {
     this.revokeObjectUrl();
     this.objectUrlForPreview = URL.createObjectURL(file);
     const img = await this.loadImage(this.objectUrlForPreview);
+  // Try client-side depth if enabled and available (model must exist in assets); otherwise continue with grayscale-based relief
+    let useOnnx = false;
+    if (this.useDepth()) {
+      try {
+        // Quick existence check for model path; if 404, this will throw in ensureSession.
+    await this.depthRt.ensureSession();
+    this.depthAvailable.set(true);
+        useOnnx = true;
+      } catch {
+    this.depthAvailable.set(false);
+        useOnnx = false;
+      }
+    }
     // Build/update mesh
     const opts: ReliefOptions = {
       invert: this.invert(),
@@ -609,7 +822,50 @@ export class ConverterComponent implements OnDestroy {
       sampleMax: this.sampleMax(),
       maxHeightMM: this.maxHeightMM(),
     };
-  const mesh = this.buildHeightMeshFromImage(img, opts);
+    let mesh: any;
+    if (useOnnx) {
+      try {
+        const { depth, size } = await this.depthRt.estimateDepth(img);
+        // Resample depth to target tw/th and apply same refinement/normalization path
+        const ar = img.height / img.width;
+        const sample = Math.max(32, Math.min(opts.sampleMax + ((opts.subdivisionLevel - 1) * 20), 512));
+        const tw = sample;
+        const th = Math.max(16, Math.floor(sample * ar));
+        // Simple resize from square depth (size x size) to tw x th
+        const d2 = new Float32Array(tw * th);
+        const sx = size / tw; const sy = size / th;
+        for (let y = 0; y < th; y++) {
+          for (let x = 0; x < tw; x++) {
+            const ix = Math.min(size - 1, Math.floor(x * sx));
+            const iy = Math.min(size - 1, Math.floor(y * sy));
+            d2[y * tw + x] = depth[iy * size + ix];
+          }
+        }
+        // Normalize/invert if needed
+        let mn = d2[0], mx = d2[0];
+        for (let i = 1; i < d2.length; i++) { const v = d2[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+        const invR = 1 / ((mx - mn) || 1);
+        for (let i = 0; i < d2.length; i++) {
+          let v = (d2[i] - mn) * invR;
+          if (opts.invert) v = 1 - v;
+          d2[i] = v;
+        }
+  // Build watertight printable mesh from depth map
+  mesh = this.buildWatertightFromDepth(d2, tw, th, opts);
+  this.lastDepthData = { d: d2, tw, th, opts };
+      } catch {
+        mesh = this.buildHeightMeshFromImage(img, opts);
+      }
+    } else {
+      // Grayscale-based depth as fallback
+      const ar = img.height / img.width;
+      const sample = Math.max(32, Math.min(opts.sampleMax + ((opts.subdivisionLevel - 1) * 20), 512));
+      const tw = sample;
+      const th = Math.max(16, Math.floor(sample * ar));
+  const d2 = this.sampleGrayDepth(img, tw, th, opts.invert);
+  mesh = this.buildWatertightFromDepth(d2, tw, th, opts);
+  this.lastDepthData = { d: d2, tw, th, opts };
+    }
     // Insert/replace in scene
     if (this.three!.mesh) {
       this.three!.scene.remove(this.three!.mesh);
@@ -658,8 +914,10 @@ export class ConverterComponent implements OnDestroy {
         compressionLevel: this.compressionLevel(),
         format: this.format(),
       });
-      const url = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
       this.downloadUrl.set(url);
+  this.lastConversion.set('relief');
+  this.lastExt.set('stl');
     } catch (e) {
       this.setError(e);
     } finally {
@@ -668,6 +926,7 @@ export class ConverterComponent implements OnDestroy {
   }
 
   async uploadHQ() {
+  // Kept for backend HQ pipeline (not used by UI button now). Consider exposing via advanced toggle.
     const f = this.file();
     if (!f || this.isLoading()) return;
     this.resetError();
@@ -691,8 +950,44 @@ export class ConverterComponent implements OnDestroy {
         format: this.format(),
         hqFormat: 'stl',
       } as any);
+  const url = URL.createObjectURL(blob);
+  this.downloadUrl.set(url);
+  this.lastConversion.set('3d');
+  this.lastExt.set('stl'); // update if allowing obj/glb later
+    } catch (e) {
+      this.setError(e);
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  // Export the current 3D preview as STL (matches what's shown in the 3D tab)
+  async convert3D() {
+    const f = this.file();
+    if (!f || this.isLoading()) return;
+    this.resetError();
+    this.isLoading.set(true);
+    this.downloadUrl.set(null);
+    try {
+      // Ensure three scene and mesh are ready
+      if (!this.threeContainer?.nativeElement) {
+        // If 3D container not rendered yet, force 3D mode to create it
+        this.setPreviewMode('3d');
+      }
+      await this.ensureThree(this.threeContainer!.nativeElement);
+      if (!this.lastDepthData) {
+        // Ensure we have fresh depth matching preview
+        await this.render3DPreview(f);
+      }
+      const { d, tw, th, opts } = this.lastDepthData!;
+      const expMesh = this.buildWatertightFromDepth(d, tw, th, opts);
+      const exporter = new STLExporter();
+      const arrayBuffer = exporter.parse(expMesh, { binary: true }) as ArrayBuffer;
+      const blob = new Blob([arrayBuffer], { type: 'model/stl' });
       const url = URL.createObjectURL(blob);
       this.downloadUrl.set(url);
+      this.lastConversion.set('3d');
+      this.lastExt.set('stl');
     } catch (e) {
       this.setError(e);
     } finally {
@@ -721,11 +1016,12 @@ export class ConverterComponent implements OnDestroy {
     this.format.set('binary');
     this.previewMode.set('image');
 
-    this.error.set(null);
+  this.error.set(null);
   // Clear any previous download so the "Descargar" button disappears
   const dl = this.downloadUrl();
   if (dl) { URL.revokeObjectURL(dl); }
   this.downloadUrl.set(null);
+  this.lastConversion.set(null);
   }
 
   ngOnDestroy() {

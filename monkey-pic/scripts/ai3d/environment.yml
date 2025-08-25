@@ -1,0 +1,14 @@
+name: monkey3d
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy>=1.24
+  - scipy>=1.11
+  - pillow>=10.4
+  - opencv
+  - open3d>=0.18
+  - pip
+  - pip:
+      - opencv-python-headless>=4.10
+      # torch optional; install from conda-forge for MPS on Apple Silicon

@@ -32,10 +32,13 @@ hqRouter.post("/convert-hq", async (ctx) => {
     const widthMM = num(fields.widthMM, 10, 600, 120);
     const baseMM = num(fields.baseMM, 0, 10, 1.0);
     const maxHeightMM = num(fields.maxHeightMM, 0.2, 50, 5.0);
-    const format = (fields.format || "stl").toLowerCase(); // "stl" | "glb" | "obj"
+  const format = (fields.format || "stl").toLowerCase(); // "stl" | "glb" | "obj"
+  const invert = String(fields.invert || '').toLowerCase() === 'true';
 
     // Python configuration
-    const PYTHON_HQ_ENABLED = (Deno.env.get("PYTHON_HQ_ENABLED") || "").toLowerCase() === "true";
+  const PYTHON_HQ_ENABLED = (Deno.env.get("PYTHON_HQ_ENABLED") || "").toLowerCase() === "true";
+  const PYTHON_HQ_USE_MIDAS = (Deno.env.get("PYTHON_HQ_USE_MIDAS") || "").toLowerCase() === "true";
+  const PYTORCH_DEVICE = (Deno.env.get("PYTORCH_DEVICE") || "cpu").toLowerCase(); // cpu|cuda|mps
     const PYTHON_CMD = Deno.env.get("PYTHON_CMD") || "python3";
     const SCRIPT_PATH = Deno.env.get("PYTHON_HQ_SCRIPT") || new URL("../../scripts/ai3d/estimate_and_mesh.py", import.meta.url).pathname;
 
@@ -44,7 +47,7 @@ hqRouter.post("/convert-hq", async (ctx) => {
       try {
         const anyFile = file as unknown as { content?: Uint8Array };
         const buf = anyFile.content && anyFile.content.length ? anyFile.content : await Deno.readFile(file.filename);
-        const stl = await imageToStl(buf, { widthMM, baseMM, maxHeightMM, invert: false });
+  const stl = await imageToStl(buf, { widthMM, baseMM, maxHeightMM, invert });
         const base = (originalName.replace(/\.[^/.]+$/, "") || "model");
         const encoded = encodeURIComponent(`${base}.stl`);
         let fallback = `${base}.stl`.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -54,8 +57,8 @@ hqRouter.post("/convert-hq", async (ctx) => {
         ctx.response.headers.set("X-HQ-Fallback", "enhanced-stl");
         ctx.response.body = stl;
         return;
-      } catch (e) {
-        console.error("[hq] fallback failed", e);
+  } catch (_e) {
+        console.error("[hq] fallback failed", _e);
         ctx.response.status = Status.InternalServerError;
         ctx.response.body = { error: "HQ fallback failed" };
         return;
@@ -79,19 +82,71 @@ hqRouter.post("/convert-hq", async (ctx) => {
     }
 
     // Call Python script
-    const p = new Deno.Command(PYTHON_CMD, {
-      args: [SCRIPT_PATH, "--input", inPath, "--output", outPath, "--widthMM", String(widthMM), "--baseMM", String(baseMM), "--maxHeightMM", String(maxHeightMM), "--format", format],
-      stdout: "piped",
-      stderr: "piped",
-    });
-    const { code, stdout, stderr } = await p.output();
-    const outTxt = new TextDecoder().decode(stdout);
-    const errTxt = new TextDecoder().decode(stderr);
+    const args = [
+      SCRIPT_PATH,
+      "--input", inPath,
+      "--output", outPath,
+      "--widthMM", String(widthMM),
+      "--baseMM", String(baseMM),
+      "--maxHeightMM", String(maxHeightMM),
+      "--format", format,
+      ...(invert ? ["--invert"] : []),
+      ...(PYTHON_HQ_USE_MIDAS ? ["--useMiDaS", ...(PYTORCH_DEVICE ? ["--device", PYTORCH_DEVICE] : [])] : []),
+    ];
+    let code = -1;
+    let outTxt = "";
+    let errTxt = "";
+    try {
+      const p = new Deno.Command(PYTHON_CMD, {
+        args,
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const result = await p.output();
+      code = result.code;
+      outTxt = new TextDecoder().decode(result.stdout);
+      errTxt = new TextDecoder().decode(result.stderr);
+    } catch (spawnErr) {
+      console.error("[hq] python spawn failed", spawnErr);
+      // Fallback to enhanced STL when Python can't start
+      try {
+        const buf = await Deno.readFile(inPath);
+        const stl = await imageToStl(buf, { widthMM, baseMM, maxHeightMM, invert });
+        const base = (originalName.replace(/\.[^/.]+$/, "") || "model");
+        const encoded = encodeURIComponent(`${base}.stl`);
+        let fallback = `${base}.stl`.replace(/[^A-Za-z0-9._-]/g, "_");
+        if (!fallback) fallback = "model.stl";
+        ctx.response.headers.set("Content-Disposition", `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`);
+        ctx.response.headers.set("Content-Type", "model/stl");
+        ctx.response.headers.set("X-HQ-Fallback", "enhanced-stl-spawn-failed");
+        ctx.response.body = stl;
+        return;
+      } catch (_e) {
+        ctx.response.status = Status.InternalServerError;
+        ctx.response.body = { error: "HQ conversion unavailable (Python not found)" };
+        return;
+      }
+    }
     if (code !== 0) {
       console.error("[hq] python failed:", { code, out: outTxt, err: errTxt });
-      ctx.response.status = Status.InternalServerError;
-      ctx.response.body = { error: "HQ conversion failed in Python stage", details: errTxt.slice(0, 500) };
-      return;
+      // Fallback to enhanced STL so users still get a model
+      try {
+        const buf = await Deno.readFile(inPath);
+        const stl = await imageToStl(buf, { widthMM, baseMM, maxHeightMM, invert });
+        const base = (originalName.replace(/\.[^/.]+$/, "") || "model");
+        const encoded = encodeURIComponent(`${base}.stl`);
+        let fallback = `${base}.stl`.replace(/[^A-Za-z0-9._-]/g, "_");
+        if (!fallback) fallback = "model.stl";
+        ctx.response.headers.set("Content-Disposition", `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`);
+        ctx.response.headers.set("Content-Type", "model/stl");
+        ctx.response.headers.set("X-HQ-Fallback", "enhanced-stl-python-failed");
+        ctx.response.body = stl;
+        return;
+  } catch (_e) {
+        ctx.response.status = Status.InternalServerError;
+        ctx.response.body = { error: "HQ conversion failed in Python stage", details: errTxt.slice(0, 500) };
+        return;
+      }
     }
 
     // Respond with file
@@ -108,8 +163,22 @@ hqRouter.post("/convert-hq", async (ctx) => {
       ctx.response.body = out;
     } catch (e) {
       console.error("[hq] read output failed", e);
-      ctx.response.status = Status.InternalServerError;
-      ctx.response.body = { error: "HQ pipeline produced no output file" };
+      // Fallback to enhanced STL
+      try {
+        const buf = await Deno.readFile(inPath);
+        const stl = await imageToStl(buf, { widthMM, baseMM, maxHeightMM, invert });
+        const base = (originalName.replace(/\.[^/.]+$/, "") || "model");
+        const encoded = encodeURIComponent(`${base}.stl`);
+        let fallback = `${base}.stl`.replace(/[^A-Za-z0-9._-]/g, "_");
+        if (!fallback) fallback = "model.stl";
+        ctx.response.headers.set("Content-Disposition", `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`);
+        ctx.response.headers.set("Content-Type", "model/stl");
+        ctx.response.headers.set("X-HQ-Fallback", "enhanced-stl-read-failed");
+        ctx.response.body = stl;
+  } catch (_e2) {
+        ctx.response.status = Status.InternalServerError;
+        ctx.response.body = { error: "HQ pipeline produced no output file" };
+      }
     } finally {
       try { await Deno.remove(tmpDir, { recursive: true }); } catch { /* ignore cleanup error */ }
     }
