@@ -1,6 +1,9 @@
 import { Router } from "../deps.ts";
 import stlRouter from "./stl.ts";
 import hqRouter from "./hq.ts";
+import previewRouter from "./preview.ts";
+import model3dRouter from "./model3d.ts";
+import volumetric3dRouter from "./volumetric3d.ts";
 import { saveStlData } from "../services/firebase.service.ts";
 
 const router = new Router();
@@ -9,6 +12,9 @@ router.get("/", (ctx) => {
 });
 router.use("/api", stlRouter.routes(), stlRouter.allowedMethods());
 router.use("/api", hqRouter.routes(), hqRouter.allowedMethods());
+router.use("/api", previewRouter.routes(), previewRouter.allowedMethods());
+router.use("/api", model3dRouter.routes(), model3dRouter.allowedMethods());
+router.use("/api", volumetric3dRouter.routes(), volumetric3dRouter.allowedMethods());
 
 // Ruta POST /api/stl (JSON, no form-data)
 router.post("/api/stl", async (ctx) => {

@@ -20,9 +20,9 @@ body.bx--body {
 
 /* Ensure toggle switch visuals are visible even if some Carbon tokens are missing */
 .bx--toggle {
-	--toggle-track-off: #8d8d8d;   /* Gray 60 */
-	--toggle-track-on: #0f62fe;    /* IBM Blue 60 */
-	--toggle-thumb: #ffffff;
+	--toggle-track-off: #f4f4f4;   /* Carbon Gray 10 */
+	--toggle-track-on: #f4f4f4;    /* Carbon Gray 10 */
+	--toggle-thumb: #f4f4f4;
 }
 .bx--toggle-input + .bx--toggle__appearance {
 	background-color: var(--toggle-track-off);
@@ -39,23 +39,23 @@ body.bx--body {
 	position: relative; display: inline-block; width: 48px; height: 24px;
 }
 .toggle-fallback input { display: none; }
-.toggle-fallback .track { position:absolute; inset:0; background:#8d8d8d; border-radius:999px; transition:background .2s; }
-.toggle-fallback .thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition:left .2s; }
-.toggle-fallback input:checked ~ .track { background:#0f62fe; }
+.toggle-fallback .track { position:absolute; inset:0; background:#f4f4f4; border-radius:999px; transition:background .2s; }
+.toggle-fallback .thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#f4f4f4; border-radius:50%; transition:left .2s; }
+.toggle-fallback input:checked ~ .track { background:#f4f4f4; }
 .toggle-fallback input:checked ~ .thumb { left:26px; }
 .toggle-fallback.disabled { opacity: .5; pointer-events: none; }
 
 /* Make the download button green (success) using Carbon greens */
 .btn-download {
-	background-color: #24a148 !important; /* Green 50 */
+	background-color: #f4f4f4 !important; /* Carbon Gray 10 */
 	border-color: #24a148 !important;
 }
 .btn-download:hover {
-	background-color: #198038 !important; /* Green 60 */
+	background-color: #f4f4f4 !important; /* Carbon Gray 10 */
 	border-color: #198038 !important;
 }
 .btn-download:active {
-	background-color: #0e6027 !important; /* Green 70 */
+	background-color: #f4f4f4 !important; /* Carbon Gray 10 */
 	border-color: #0e6027 !important;
 }
 

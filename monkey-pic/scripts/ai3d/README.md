@@ -91,3 +91,8 @@ python3 estimate_and_mesh.py \
 Notes:
 - On Apple Silicon, install PyTorch with MPS support using the official instructions.
 - If MiDaS is disabled, the script uses an OpenCV-based proxy depth with edge-guided sharpening.
+
+High-poly targets and mesh quality:
+- Use `--targetTris 400000` (default) to approach ~400k faces; the script adapts grid resolution to meet this target while preserving aspect ratio.
+- The resulting mesh is watertight (top, bottom, sides) and smoothed with Taubin filtering to keep surfaces clean without shrinking volume too much.
+- If the mesh is far under the target triangle count, a single Loop subdivision is applied to increase detail, maintaining clean topology.

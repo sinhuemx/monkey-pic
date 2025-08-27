@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Progress Bar</title>
+    <style>
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            padding: 2rem;
+            background: #f4f4f4;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Carbon Design System Progress Bar */
+        .bx--progress-bar {
+            width: 100%;
+            height: 8px;
+            margin: 1rem 0;
+        }
+
+        .bx--progress-bar__track {
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .bx--progress-bar__bar {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.8s ease-out, background-color 0.3s ease;
+        }
+
+        .bx--form__helper-text {
+            font-size: 0.875rem;
+            color: #525252;
+            margin-top: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 0.75rem 0;
+            font-size: 0.875rem;
+        }
+
+        .status-icon {
+            min-width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            text-align: center;
+        }
+
+        .status-completed {
+            background: #24a148;
+            color: white;
+        }
+
+        .status-active {
+            background: #0f62fe;
+            color: white;
+        }
+
+        .status-pending {
+            background: #e0e0e0;
+            color: #6f6f6f;
+        }
+
+        .loading-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #e0e0e0;
+            border-top: 2px solid #0f62fe;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        button {
+            background: #0f62fe;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0.5rem;
+        }
+
+        button:hover {
+            background: #0353e9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Test Progress Bar - Carbon Design System</h2>
+        
+        <div id="progress-container">
+            <!-- Progress Bar -->
+            <div class="bx--progress-bar" 
+                 role="progressbar"
+                 aria-valuemin="0" 
+                 aria-valuemax="100" 
+                 aria-valuenow="0">
+                <div class="bx--progress-bar__track">
+                    <div id="progress-bar" class="bx--progress-bar__bar" 
+                         style="width: 0%; background-color: #0f62fe;">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Helper text -->
+            <div class="bx--form__helper-text">
+                <div id="success-icon" style="display: none;">
+                    <svg style="width:16px;height:16px;fill:#24a148;" viewBox="0 0 16 16">
+                        <path d="M8,1C4.1,1,1,4.1,1,8c0,3.9,3.1,7,7,7s7-3.1,7-7C15,4.1,11.9,1,8,1z M7,11L4.3,8.3l0.9-0.8L7,9.3l4-3.9l0.9,0.8L7,11z"/>
+                    </svg>
+                </div>
+                <div id="loading-spinner" class="loading-spinner"></div>
+                <span id="status-text">0% - Iniciando...</span>
+            </div>
+        </div>
+
+        <!-- Steps -->
+        <div id="steps-container">
+            <div class="step">
+                <div class="status-icon status-completed">✓</div>
+                <span>Imagen cargada y procesada</span>
+            </div>
+            <div class="step">
+                <div id="step2-icon" class="status-icon status-active">
+                    <div class="loading-spinner" style="width: 12px; height: 12px; border-width: 1px;"></div>
+                </div>
+                <span id="step2-text">Generando mapa de profundidad</span>
+            </div>
+            <div class="step">
+                <div id="step3-icon" class="status-icon status-pending">⏳</div>
+                <span id="step3-text" style="color: #6f6f6f;">Creando geometría 3D</span>
+            </div>
+            <div class="step">
+                <div id="step4-icon" class="status-icon status-pending">⏳</div>
+                <span id="step4-text" style="color: #6f6f6f;">Optimizando malla</span>
+            </div>
+        </div>
+
+        <div style="margin-top: 2rem;">
+            <button onclick="simulateRelief()">Simular Relieve</button>
+            <button onclick="simulate3D()">Simular 3D</button>
+            <button onclick="reset()">Reset</button>
+        </div>
+    </div>
+
+    <script>
+        let currentProgress = 0;
+        let progressInterval;
+
+        function updateProgress(progress, statusText, isComplete = false) {
+            const progressBar = document.getElementById('progress-bar');
+            const statusTextEl = document.getElementById('status-text');
+            const successIcon = document.getElementById('success-icon');
+            const loadingSpinner = document.getElementById('loading-spinner');
+            
+            currentProgress = progress;
+            progressBar.style.width = progress + '%';
+            
+            if (isComplete) {
+                progressBar.style.backgroundColor = '#24a148';
+                statusTextEl.textContent = '¡Listo!';
+                successIcon.style.display = 'block';
+                loadingSpinner.style.display = 'none';
+            } else {
+                progressBar.style.backgroundColor = '#0f62fe';
+                statusTextEl.textContent = progress + '% - ' + statusText;
+                successIcon.style.display = 'none';
+                loadingSpinner.style.display = 'block';
+            }
+
+            // Update steps
+            updateSteps(progress);
+        }
+
+        function updateSteps(progress) {
+            const step2Icon = document.getElementById('step2-icon');
+            const step2Text = document.getElementById('step2-text');
+            const step3Icon = document.getElementById('step3-icon');
+            const step3Text = document.getElementById('step3-text');
+            const step4Icon = document.getElementById('step4-icon');
+            const step4Text = document.getElementById('step4-text');
+
+            // Step 2
+            if (progress >= 40) {
+                step2Icon.className = 'status-icon status-completed';
+                step2Icon.innerHTML = '✓';
+                step2Text.style.color = '#161616';
+            }
+
+            // Step 3
+            if (progress >= 70) {
+                if (progress < 100) {
+                    step3Icon.className = 'status-icon status-active';
+                    step3Icon.innerHTML = '<div class="loading-spinner" style="width: 12px; height: 12px; border-width: 1px;"></div>';
+                } else {
+                    step3Icon.className = 'status-icon status-completed';
+                    step3Icon.innerHTML = '✓';
+                }
+                step3Text.style.color = '#161616';
+            }
+
+            // Step 4
+            if (progress >= 90) {
+                if (progress < 100) {
+                    step4Icon.className = 'status-icon status-active';
+                    step4Icon.innerHTML = '<div class="loading-spinner" style="width: 12px; height: 12px; border-width: 1px;"></div>';
+                } else {
+                    step4Icon.className = 'status-icon status-completed';
+                    step4Icon.innerHTML = '✓';
+                }
+                step4Text.style.color = '#161616';
+            }
+        }
+
+        function simulateProgress(type) {
+            reset();
+            
+            let progress = 5;
+            updateProgress(progress, 'Iniciando...');
+
+            progressInterval = setInterval(() => {
+                if (progress < 85) {
+                    const increment = type === '3d' ? 
+                        Math.random() * 3 + 1 : // 3D más lento
+                        Math.random() * 5 + 2;  // Relief más rápido
+                    
+                    progress = Math.min(85, progress + increment);
+                    
+                    let statusText;
+                    if (progress < 25) {
+                        statusText = type === '3d' ? 'Analizando imagen' : 'Procesando imagen';
+                    } else if (progress < 50) {
+                        statusText = type === '3d' ? 'Generando profundidad' : 'Creando mapa de altura';
+                    } else if (progress < 75) {
+                        statusText = type === '3d' ? 'Construyendo geometría' : 'Generando relieve';
+                    } else {
+                        statusText = type === '3d' ? 'Optimizando modelo' : 'Finalizando STL';
+                    }
+                    
+                    updateProgress(Math.floor(progress), statusText);
+                } else {
+                    // Simular finalización después de un tiempo aleatorio
+                    setTimeout(() => {
+                        updateProgress(100, '¡Completado!', true);
+                        clearInterval(progressInterval);
+                    }, Math.random() * 2000 + 1000);
+                    clearInterval(progressInterval);
+                }
+            }, type === '3d' ? 200 : 150);
+        }
+
+        function simulateRelief() {
+            simulateProgress('relief');
+        }
+
+        function simulate3D() {
+            simulateProgress('3d');
+        }
+
+        function reset() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+            
+            updateProgress(0, 'Iniciando...');
+            
+            // Reset all steps
+            const step2Icon = document.getElementById('step2-icon');
+            const step2Text = document.getElementById('step2-text');
+            const step3Icon = document.getElementById('step3-icon');
+            const step3Text = document.getElementById('step3-text');
+            const step4Icon = document.getElementById('step4-icon');
+            const step4Text = document.getElementById('step4-text');
+
+            step2Icon.className = 'status-icon status-active';
+            step2Icon.innerHTML = '<div class="loading-spinner" style="width: 12px; height: 12px; border-width: 1px;"></div>';
+            step2Text.style.color = '#161616';
+
+            step3Icon.className = 'status-icon status-pending';
+            step3Icon.innerHTML = '⏳';
+            step3Text.style.color = '#6f6f6f';
+
+            step4Icon.className = 'status-icon status-pending';
+            step4Icon.innerHTML = '⏳';
+            step4Text.style.color = '#6f6f6f';
+        }
+    </script>
+</body>
+</html>

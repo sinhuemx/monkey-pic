@@ -1,3 +1,10 @@
+## Firebase config
+
+Place your web app config in `public/firebase-config.json` using the example file:
+
+1. Copy `public/firebase-config.json.example` to `public/firebase-config.json`.
+2. Fill in your Firebase keys from Console settings.
+3. Do not commit the real file; it is gitignored.
 # Frontend
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.1.6.

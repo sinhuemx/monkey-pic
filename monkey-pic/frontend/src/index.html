@@ -7,8 +7,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <!-- CSP restrictiva que solo permite recursos locales -->
-  <!-- style-src-elem explícito + blob/data para estilos generados en dev -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://localhost:* http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' blob: data:; style-src-elem 'self' 'unsafe-inline' blob: data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'self';">
+  <!-- CSP estricto sin fuentes externas pero permite estilos inline -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://localhost:* http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'self';">
   <script>
     // Proactively block any attempt to load Google Fonts stylesheets (keeps console clean under strict CSP)
     (function() {

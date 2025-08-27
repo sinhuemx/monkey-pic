@@ -43,11 +43,11 @@
     <div class="bx--row bx--form" style="min-height:calc(100vh - 96px);">
 
       <!-- IZQUIERDA: PREVIEW (md:5, lg:10) -->
-      <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-7" style="display:flex;">
+      <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-6" style="display:flex;">
         <section class="bx--tile" style="flex:1;display:flex;flex-direction:column;gap:.75rem;">
 
           <!-- Tabs -->
-          <div *ngIf="!is3ds(); else threeDsInfo" class="bx--tabs" role="navigation" style="margin-bottom:.25rem;">
+          <div *ngIf="!is3ds(); else threeDsInfo" class="bx--tabs" role="navigation" style="margin-bottom:.25rem; display: flex; justify-content: center;">
             <ul class="bx--tabs__nav" role="tablist">
               <li class="bx--tabs__nav-item" role="presentation">
                 <a class="bx--tabs__nav-link" role="tab"
@@ -73,22 +73,99 @@
           <!-- Área de preview -->
           <div *ngIf="!is3ds()" style="position:relative;flex:1;">
             <ng-container [ngSwitch]="previewMode()">
-              <!-- Usa wrapper de aspect-ratio (2x3). El canvas va dentro -->
-              <div *ngSwitchDefault class="bx--aspect-ratio bx--aspect-ratio--2x3" style="width:100%;">
+              
+              <!-- Canvas para modo Image -->
+              <div *ngSwitchCase="'image'" class="bx--aspect-ratio bx--aspect-ratio--2x3" style="width:100%;">
                 <div class="bx--aspect-ratio--object">
-                  <canvas #previewCanvas aria-label="Vista previa"
-                          style="display:block;width:100%;height:100%;"></canvas>
+                  <canvas #imageCanvas aria-label="Vista previa de imagen"
+                    style="display:block;width:100%;height:100%;"></canvas>
                 </div>
               </div>
 
-              <div *ngSwitchCase="'3d'" #threeContainer class="three-preview-container"
-                   style="width:100%;height:480px;"></div>
+              <!-- Canvas para modo Relief (independiente) -->
+              <div *ngSwitchCase="'relief'" class="bx--aspect-ratio bx--aspect-ratio--2x3" style="width:100%;">
+                <div class="bx--aspect-ratio--object">
+                  <canvas #reliefCanvas aria-label="Vista previa de relieve"
+                    style="display:block;width:100%;height:100%;"></canvas>
+                </div>
+              </div>
+
+              <!-- Canvas fallback para otros casos -->
+              <div *ngSwitchDefault class="bx--aspect-ratio bx--aspect-ratio--2x3" style="width:100%;">
+                <div class="bx--aspect-ratio--object">
+                  <canvas #previewCanvas aria-label="Vista previa"
+                    style="display:block;width:100%;height:100%;"></canvas>
+                </div>
+              </div>
+
+              <div *ngSwitchCase="'3d'" #threeContainer class="three-preview-container">
+                <!-- Placeholder message for 3D -->
+                <div *ngIf="!is3DReady()" 
+                     style="position:absolute;inset:0;display:grid;place-items:center;background:#f4f4f4;color:#f4f4f4;z-index:10;">
+                  <div class="bx--inline-loading__text">Aquí se mostrará tu vista 3D...</div>
+                </div>
+                
+                <!-- Stats overlay -->
+                <div style="position:absolute;left:8px;bottom:8px;background:#f4f4f4;color:#0f62fe;border-radius:8px;padding:.5rem .75rem;font-size:.75rem;line-height:1.2;z-index:5;">
+                  <div>Caras&nbsp;&nbsp;{{ faceCount() >= 1000 ? (faceCount() / 1000 | number:'1.0-1') + 'k' : (faceCount() | number:'1.0-0') }}</div>
+                  <div>Vértices&nbsp;&nbsp;{{ vertCount() >= 1000 ? (vertCount() / 1000 | number:'1.0-1') + 'k' : (vertCount() | number:'1.0-0') }}</div>
+                  <div *ngIf="volumeCM3() !== null && volumeCM3()! > 0">Volumen&nbsp;&nbsp;{{ volumeCM3() | number:'1.2-3' }} cm³</div>
+                </div>
+              </div>
             </ng-container>
 
             <!-- Loading -->
-            <div *ngIf="isLoading()" role="status" aria-live="polite"
-                 style="position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.6);">
-              <div class="bx--inline-loading__text">Procesando…</div>
+            <div *ngIf="isCurrentTabLoading()" role="status" aria-live="polite"
+                 style="position:absolute;inset:0;display:grid;place-items:center;background:rgba(244,244,244,0.95);z-index:20;">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:1.5rem;width:85%;max-width:420px;">
+                <div class="bx--type-productive-heading-02" style="color:#161616;">
+                  {{ is3D() ? 'Generando modelo 3D volumétrico...' : 'Convirtiendo relieve a STL...' }}
+                </div>
+                
+                <!-- Carbon Progress Bar con estados -->
+                <div style="width:100%;">
+                  <!-- Progress Bar Container -->
+                  <div class="bx--progress-bar" 
+                       [attr.aria-valuemin]="0" 
+                       [attr.aria-valuemax]="100" 
+                       [attr.aria-valuenow]="loadingProgress()"
+                       role="progressbar"
+                       [attr.aria-label]="is3D() ? 'Progreso de generación 3D' : 'Progreso de conversión STL'">
+                    
+                    <!-- Track -->
+                    <div class="bx--progress-bar__track">
+                      <!-- Bar indicator con transición suave -->
+                      <div class="bx--progress-bar__bar" 
+                           [style.width.%]="loadingProgress()"
+                           [style.background-color]="loadingProgress() >= 100 ? '#24a148' : '#0f62fe'"
+                           style="transition: width 0.8s ease-out, background-color 0.3s ease;">
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Helper text con porcentaje y estado -->
+                  <div class="bx--form__helper-text" style="text-align:center;margin-top:0.75rem;display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+                    <!-- Success Icon -->
+                    <svg *ngIf="loadingProgress() >= 100" 
+                         style="width:16px;height:16px;fill:#24a148;" 
+                         viewBox="0 0 16 16">
+                      <path d="M8,1C4.1,1,1,4.1,1,8c0,3.9,3.1,7,7,7s7-3.1,7-7C15,4.1,11.9,1,8,1z M7,11L4.3,8.3l0.9-0.8L7,9.3l4-3.9l0.9,0.8L7,11z"/>
+                    </svg>
+                    
+                    <!-- Loading Spinner para estados activos -->
+                    <div *ngIf="loadingProgress() < 100" class="bx--loading bx--loading--small" style="width:16px;height:16px;">
+                      <svg class="bx--loading__svg" viewBox="0 0 100 100">
+                        <circle class="bx--loading__stroke" cx="50%" cy="50%" r="44"/>
+                      </svg>
+                    </div>
+                    
+                    <!-- Estado y porcentaje -->
+                    <span [style.color]="loadingProgress() >= 100 ? '#24a148' : '#525252'">
+                      {{ loadingProgress() >= 100 ? '¡Listo!' : loadingProgress() + '% - ' + loadingStatusText() }}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -107,7 +184,7 @@
       </div>
 
       <!-- DERECHA: DROP + CONTROLES (md:3, lg:6) -->
-      <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-5" style="display:flex;">
+      <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-6" style="display:flex;">
         <section class="bx--tile controls-tile" style="flex:1;display:flex;flex-direction:column;gap:1rem;">
 
              <!-- Drop zone -->
@@ -127,15 +204,55 @@
 
           <!-- Controles (bloques compactos) -->
           <div *ngIf="!is3ds()" style="flex:1;overflow:auto;">
-            <!-- Dimensiones -->
+            
+            <!-- Estado Imagen: solo vista de la imagen -->
+            <ng-container *ngIf="isImage(); else notImageControls">
+              <div>
+                <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Vista de Imagen</h4>
+                
+                <!-- Información de la imagen -->
+                <div *ngIf="file()" class="bx--row" style="margin-bottom:1rem;">
+                  <div class="bx--col-lg-12">
+                    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+                      <span class="bx--tag bx--tag--blue">
+                        {{ file()!.name }}
+                      </span>
+                      <span class="bx--tag bx--tag--cool-gray">
+                        {{ (file()!.size / 1024 / 1024).toFixed(2) }} MB
+                      </span>
+                      <span class="bx--tag bx--tag--cool-gray">
+                        {{ file()!.type }}
+                      </span>
+                      <span class="bx--tag bx--tag--green">
+                        {{ _lastBmpW }}×{{ _lastBmpH }} px
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Mensaje informativo -->
+                <div class="bx--row">
+                  <div class="bx--col-lg-12">
+                    <div class="bx--form__helper-text">
+                      Esta es la vista previa de tu imagen. Usa los tabs "Relieve" o "3D" para generar el modelo.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ng-container>            <ng-template #notImageControls>
+            
+            <!-- Relieve: mostrar solo controles de relieve/dimensiones/calidad -->
+            <ng-container *ngIf="isRelief(); else threeControls">
+            
+            <!-- Dimensiones Físicas -->
             <div>
-              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Dimensiones</h4>
-              <div class="bx--row">
+              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Dimensiones Físicas</h4>
+              <div class="bx--row" style="gap:0.5rem;">
                 <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-4">
                   <div class="bx--form-item">
                     <ibm-slider [min]="10" [max]="600" [step]="1"
                                 [ngModel]="widthMM()" (ngModelChange)="onWidthSliderChange($event)"
-                                label="Ancho (mm)"></ibm-slider>
+                                label="Ancho"></ibm-slider>
                     <div class="bx--form__helper-text">{{ widthMM() | number:'1.0-0' }} mm</div>
                   </div>
                 </div>
@@ -143,7 +260,7 @@
                   <div class="bx--form-item">
                     <ibm-slider [min]="0" [max]="10" [step]="0.1"
                                 [ngModel]="baseMM()" (ngModelChange)="onBaseSliderChange($event)"
-                                label="Base (mm)"></ibm-slider>
+                                label="Base"></ibm-slider>
                     <div class="bx--form__helper-text">{{ baseMM() | number:'1.1-1' }} mm</div>
                   </div>
                 </div>
@@ -151,18 +268,71 @@
                   <div class="bx--form-item">
                     <ibm-slider [min]="0.2" [max]="50" [step]="0.1"
                                 [ngModel]="maxHeightMM()" (ngModelChange)="onHeightSliderChange($event)"
-                                label="Altura máx (mm)"></ibm-slider>
+                                label="Altura máx"></ibm-slider>
                     <div class="bx--form__helper-text">{{ maxHeightMM() | number:'1.1-1' }} mm</div>
                   </div>
                 </div>
               </div>
+              
+              <!-- Tags de dimensiones -->
+              <div style="margin-top:0.5rem;">
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+                  <span class="bx--tag bx--tag--blue">
+                    {{ widthMM() | number:'1.0-0' }}mm × {{ (widthMM() * _lastBmpH / _lastBmpW) | number:'1.0-0' }}mm
+                  </span>
+                  <span class="bx--tag bx--tag--cool-gray">
+                    Base: {{ baseMM() | number:'1.1-1' }}mm
+                  </span>
+                  <span class="bx--tag bx--tag--green">
+                    Altura: {{ maxHeightMM() | number:'1.1-1' }}mm
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <!-- Configuración avanzada -->
+            <!-- Calidad y Resolución -->
+            <div>
+              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Calidad y Resolución</h4>
+              <div class="bx--row">
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-8">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="50" [max]="600" [step]="10"
+                                [ngModel]="sampleMax()"
+                                (ngModelChange)="onQualitySliderChange($event)"
+                                label="Resolución"></ibm-slider>
+                    <div class="bx--form__helper-text">
+                      {{ sampleMax() | number:'1.0-0' }} muestras
+                    </div>
+                  </div>
+                </div>
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-4">
+                  <div class="bx--form-item">
+                    <ibm-slider [min]="1" [max]="9" [step]="2"
+                                [ngModel]="smoothingKernel()" (ngModelChange)="onSmoothingChange($event)"
+                                label="Suavizado"></ibm-slider>
+                    <div class="bx--form__helper-text">{{ smoothingKernel() }}×{{ smoothingKernel() }}</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Estimaciones -->
+              <div style="margin-top:0.5rem;">
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+                  <span class="bx--tag bx--tag--purple">
+                    ~{{ trianglesEstimate() | number }} polígonos
+                  </span>
+                  <span class="bx--tag bx--tag--cool-gray">
+                    Suavizado: {{ smoothingKernel() }}px
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Configuración Avanzada -->
             <div>
               <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Configuración Avanzada</h4>
               <div class="bx--row">
-                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-3">
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-6">
                   <div class="bx--form-item">
                     <ibm-slider [min]="1" [max]="4" [step]="1"
                                 [ngModel]="subdivisionLevel()" (ngModelChange)="onSubdivisionChange($event)"
@@ -170,124 +340,145 @@
                     <div class="bx--form__helper-text">Nivel {{ subdivisionLevel() }}</div>
                   </div>
                 </div>
-                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-3">
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-6">
                   <div class="bx--form-item">
                     <ibm-slider [min]="0.5" [max]="3.0" [step]="0.1"
                                 [ngModel]="depthMultiplier()" (ngModelChange)="onDepthMultiplierChange($event)"
-                                label="Multiplicador de Profundidad"></ibm-slider>
+                                label="Profundidad"></ibm-slider>
                     <div class="bx--form__helper-text">{{ depthMultiplier() | number:'1.1-1' }}x</div>
                   </div>
                 </div>
-                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-3">
+              </div>
+              
+              <div class="bx--row" style="margin-top:0.5rem;">
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-6">
                   <div class="bx--form-item">
                     <ibm-slider [min]="0.0" [max]="1.0" [step]="0.1"
                                 [ngModel]="surfaceSmoothing()" (ngModelChange)="onSurfaceSmoothingChange($event)"
-                                label="Suavizado de Superficie"></ibm-slider>
+                                label="Suavizado Superficie"></ibm-slider>
                     <div class="bx--form__helper-text">{{ surfaceSmoothing() | number:'1.1-1' }}</div>
                   </div>
                 </div>
-                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-2">
+                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-6">
                   <div class="bx--form-item">
                     <ibm-slider [min]="0.1" [max]="1.0" [step]="0.1"
                                 [ngModel]="qualityThreshold()" (ngModelChange)="onQualityThresholdChange($event)"
-                                label="Umbral de Calidad"></ibm-slider>
+                                label="Umbral Calidad"></ibm-slider>
                     <div class="bx--form__helper-text">{{ qualityThreshold() | number:'1.1-1' }}</div>
                   </div>
                 </div>
-                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-4">
-                  <div class="bx--form-item">
-                    <label class="bx--label" for="depth-toggle">Depth (beta)
-                      <span *ngIf="depthAvailable()===true" class="bx--tag bx--tag--green" style="margin-left:.25rem;">listo</span>
-                      <span *ngIf="depthAvailable()===false" class="bx--tag bx--tag--red" style="margin-left:.25rem;">no disponible</span>
-                    </label>
-                    <div class="toggle-fallback">
-                      <input id="depth-toggle" type="checkbox" [checked]="useDepth()" (change)="useDepth.set(($any($event.target)).checked)" />
-                      <span></span>
-                    </div>
-                    <div class="bx--form__helper-text">Usa modelo ONNX local para estimar profundidad en el preview 3D.</div>
-                  </div>
-                </div>
               </div>
             </div>
 
-            <!-- Calidad / Resolución -->
+            <!-- Formato de Salida -->
             <div>
-              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Calidad</h4>
-              <div class="bx--row">
-                <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-6">
-                  <div class="bx--form-item">
-                    <ibm-slider [min]="50" [max]="600" [step]="10"
-                                [ngModel]="sampleMax()" (ngModelChange)="onQualitySliderChange($event)"
-                                label="Resolución (muestras)"></ibm-slider>
-                    <div class="bx--form__helper-text">
-                      {{ sampleMax() | number:'1.0-0' }} · Polígonos estimados: {{ trianglesEstimate() | number }}
-                    </div>
-                  </div>
-                </div>
-                <div class="bx--col-sm-4 bx--col-md-2 bx--col-lg-5">
-                  <div class="bx--form-item">
-                    <ibm-slider [min]="1" [max]="9" [step]="2"
-                                [ngModel]="smoothingKernel()" (ngModelChange)="onSmoothingChange($event)"
-                                label="Suavizado"></ibm-slider>
-                    <div class="bx--form__helper-text">Kernel {{ smoothingKernel() }}x{{ smoothingKernel() }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Formato -->
-            <div>
-              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Formato</h4>
+              <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Formato de Salida</h4>
               <div class="bx--row">
                 <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-12">
                   <div class="bx--select">
                     <select class="bx--select-input"
                             [ngModel]="format()" (ngModelChange)="format.set($event)"
                             name="format" [ngModelOptions]="{ standalone: true }">
-                      <option class="bx--select-option" value="binary">Binario (recomendado)</option>
-                      <option class="bx--select-option" value="ascii">ASCII</option>
+                      <option class="bx--select-option" value="binary">STL Binario (recomendado)</option>
+                      <option class="bx--select-option" value="ascii">STL ASCII (legible)</option>
                     </select>
                   </div>
-                  <div class="bx--form__helper-text">STL binario: más liviano · ASCII: legible</div>
+                  <div class="bx--form__helper-text">Binario: archivo más pequeño · ASCII: texto legible</div>
                 </div>
               </div>
             </div>
+            </ng-container>
+
+            <!-- 3D: Controles completos para generación con IA -->
+            <ng-template #threeControls>
+              <!-- Calidad -->
+              <div>
+                <h4 class="bx--type-productive-heading-01" style="margin:0 0 .25rem;">Calidad</h4>
+                <div class="bx--row">
+                  <div class="bx--col-sm-4 bx--col-md-4 bx--col-lg-12">
+                    <div class="bx--select">
+                      <select class="bx--select-input"
+                              [ngModel]="model3dQualityLevel()" 
+                              (ngModelChange)="onQualityLevelChange($event)"
+                              name="quality" [ngModelOptions]="{ standalone: true }">
+                        <option class="bx--select-option" value="normal">Normal</option>
+                        <option class="bx--select-option" value="alta">Alta</option>
+                        <option class="bx--select-option" value="maxima">Máxima</option>
+                      </select>
+                    </div>
+                    <div class="bx--form__helper-text">
+                      Calidad {{ model3dQualityLevel() }}: {{ model3dExpectedFaces() }} caras objetivo · Caras generadas: {{ faceCount() >= 1000 ? (faceCount() / 1000 | number:'1.0-1') + 'K' : (faceCount() | number:'1.0-0') }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bx--row" style="margin-top:1rem;">
+                <div class="bx--col-sm-4 bx--col-md-8 bx--col-lg-12" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+                  <span class="bx--tag bx--tag--cool-gray">
+                    Vértices: {{ vertCount() >= 1000 ? (vertCount() / 1000 | number:'1.0-1') + 'K' : (vertCount() | number:'1.0-0') }}
+                  </span>
+                  <span class="bx--tag bx--tag--cool-gray">
+                    Caras: {{ faceCount() >= 1000 ? (faceCount() / 1000 | number:'1.0-1') + 'K' : (faceCount() | number:'1.0-0') }}
+                  </span>
+                  <span class="bx--tag bx--tag--blue">
+                    Volumen: {{ volumeCM3() !== null && volumeCM3()! > 0 ? (volumeCM3() | number:'1.2-3') + ' cm³' : 'Calculando...' }}
+                  </span>
+                </div>
+              </div>
+            </ng-template>
+
+            </ng-template>
           </div>
 
       
 <!-- Acciones (fila compacta) -->
-<div class="bx--btn-set bx--btn-set--sm"
-     style="justify-content:flex-start; gap:.5rem; flex-wrap:nowrap;">
+<div class="bx--btn-set bx--btn-set--sm" style="justify-content:flex-start; gap:.5rem; flex-wrap:nowrap;">
 
+  <!-- Botón para convertir Relieve a STL -->
   <button
+    *ngIf="file() && isRelief()"
     (click)="upload()"
-    [disabled]="!file() || isLoading() || is3ds()"
+    [disabled]="reliefLoading()"
     class="bx--btn bx--btn--primary bx--btn--sm">
-    <span *ngIf="!isLoading()">Convertir Relieve</span>
-    <span *ngIf="isLoading()">Convirtiendo…</span>
+    <span *ngIf="!reliefLoading()">Convertir a STL</span>
+    <span *ngIf="reliefLoading()">Convirtiendo...</span>
   </button>
 
+  <!-- Botón para generar modelo 3D -->
   <button
-    type="button"
+    *ngIf="file() && is3D()"
     (click)="convert3D()"
-    [disabled]="!file() || isLoading()"
-    class="bx--btn bx--btn--tertiary bx--btn--sm">
-    Convertir a 3D
+    [disabled]="model3dLoading()"
+    class="bx--btn bx--btn--primary bx--btn--sm">
+    <span *ngIf="!model3dLoading()">Generar Modelo 3D</span>
+    <span *ngIf="model3dLoading()">Generando...</span>
   </button>
 
+  <!-- Botón Reset (para Relieve y 3D) -->
   <button
+    *ngIf="!is3ds() && !isImage()"
     type="button"
     class="bx--btn bx--btn--secondary bx--btn--sm"
-    (click)="resetControls()"
-    [disabled]="is3ds()">
+    (click)="resetControls()">
     Reset
   </button>
 
-  <a *ngIf="downloadUrl()"
-     [href]="downloadUrl()"
-     [attr.download]="downloadName()"
-     class="bx--btn bx--btn--primary bx--btn--sm">
-    {{ downloadLabel() || 'Descargar' }}
+  <!-- Botón de descarga para Relieve -->
+  <a *ngIf="reliefDownloadUrl() && isRelief()"
+     [href]="reliefDownloadUrl()"
+     [attr.download]="reliefDownloadName()"
+     class="bx--btn bx--btn--primary bx--btn--sm fixed-download-btn btn-success">
+    <span>Descargar STL</span>
+    <span class="bx--tag bx--tag--green" style="margin-left:.5rem;">✓</span>
+  </a>
+
+  <!-- Botón de descarga para 3D -->
+  <a *ngIf="model3dDownloadUrl() && is3D()"
+     [href]="model3dDownloadUrl()"
+     [attr.download]="model3dDownloadName()"
+     class="bx--btn bx--btn--primary bx--btn--sm fixed-download-btn btn-success">
+    <span>Descargar 3D</span>
     <span class="bx--tag bx--tag--green" style="margin-left:.5rem;">✓</span>
   </a>
 </div>

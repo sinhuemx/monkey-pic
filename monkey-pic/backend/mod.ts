@@ -28,6 +28,23 @@ app.use(async (ctx, next) => {
 	await next();
 });
 
+// Add CSP headers
+app.use(async (ctx, next) => {
+  await next();
+  const csp = [
+    "default-src 'self'",
+    "style-src 'self' 'unsafe-inline' blob: data: https://fonts.googleapis.com",
+    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https://*.googleusercontent.com",
+    "connect-src 'self' http://localhost:8000 ws://localhost:8000 https://*.googleapis.com https://www.googleapis.com",
+    "worker-src 'self' blob:",
+    "frame-src 'self'",
+  ];
+  ctx.response.headers.set("Content-Security-Policy", csp.join("; "));
+});
+
 app.use(router.routes());
 app.use(router.allowedMethods());
 

@@ -9,9 +9,17 @@ export class DepthRuntimeService {
 
   async ensureSession(): Promise<void> {
     if (this._session) return;
-    const ort = await import('onnxruntime-web');
-    // Try WebGPU first, fallback to WASM
-    const providers = ['webgpu', 'wasm'];
+    // Hint Vite to ignore analysis of this dynamic import to reduce warnings
+    const ort = await import(/* @vite-ignore */ 'onnxruntime-web');
+    // Use WASM provider to avoid proxy worker dynamic import path that triggers Vite warnings
+    // You can switch to ['webgpu','wasm'] if you want GPU when available.
+    const providers = ['wasm'];
+    try {
+      // Disable proxy worker to reduce dynamic import usage inside the lib
+      if ((ort as any).env?.wasm) {
+        (ort as any).env.wasm.proxy = false;
+      }
+    } catch { /* noop */ }
     const modelUrl = DepthRuntimeService.MODEL_URL;
     this._session = await ort.InferenceSession.create(modelUrl, { executionProviders: providers as any });
     this._inputName = this._session.inputNames?.[0] ?? 'input';

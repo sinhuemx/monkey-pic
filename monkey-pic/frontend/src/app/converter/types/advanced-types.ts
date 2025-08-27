@@ -147,3 +147,14 @@ export interface ConversionMetrics {
   compressionRatio: number;
   qualityScore: number;
 }
+
+export type VolumetricOptions = {
+  prompt: string;
+  targetFaces?: number;
+  maxHeightMM?: number;
+};
+
+export type Mesh = {
+  vertices: Float32Array;  // xyz
+  faces: Uint32Array;      // índices
+};

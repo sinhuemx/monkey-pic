@@ -3,6 +3,75 @@
 	width: 100%;
 	aspect-ratio: 3 / 2;
 	min-height: 300px;
+	max-height: 500px; /* Evita que crezca demasiado */
+	height: 400px; /* Altura fija más robusta */
+	overflow: hidden; /* Evita desbordamiento */
+	position: relative;
+	border-radius: 4px;
+	background: #f4f4f4; /* Fondo consistente mientras carga */
+	contain: layout style paint; /* Optimización CSS containment */
+}
+
+/* Canvas de Three.js dentro del contenedor */
+.three-preview-container canvas {
+	width: 100% !important;
+	height: 100% !important;
+	max-width: 100%;
+	max-height: 100%;
+	object-fit: contain;
+	display: block;
+	position: absolute !important;
+	top: 0 !important;
+	left: 0 !important;
+	z-index: 1;
+}
+
+/* Loader de Carbon IBM para procesamiento 3D */
+.bx--loading {
+  width: 5rem;
+  height: 5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bx--loading__svg {
+  width: 100%;
+  height: 100%;
+  animation: loading-spin 2s linear infinite;
+}
+
+.bx--loading__background {
+  fill: none;
+  stroke: #e0e0e0;
+  stroke-width: 2;
+}
+
+.bx--loading__stroke {
+  fill: none;
+  stroke: #0f62fe;
+  stroke-width: 2;
+  stroke-dasharray: 240;
+  stroke-dashoffset: 240;
+  animation: loading-stroke 2s ease-in-out infinite;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loading-stroke {
+  0% {
+    stroke-dashoffset: 240;
+  }
+  50% {
+    stroke-dashoffset: 60;
+  }
+  100% {
+    stroke-dashoffset: 240;
+  }
 }
 .controls-tile {
   position: sticky;
@@ -15,4 +84,48 @@
   .bx--btn-set.bx--btn-set--sm {
     gap: .375rem;
   }
+}
+
+/* Keep download button size stable (label switches between two texts) */
+.fixed-download-btn {
+  min-width: 168px; /* ~12ch; adjust as needed to fit longest label */
+  text-align: center;
+}
+
+/* Green primary-style button override to ensure consistent look across Carbon versions */
+.btn-success {
+  background-color: #24a148 !important; /* Verde éxito */
+  border-color: #24a148 !important;
+  color: white !important;
+}
+.btn-success:hover {
+  background-color: #198038 !important; /* Verde más oscuro en hover */
+  border-color: #198038 !important;
+  color: white !important;
+}
+
+/* Mejoras para herramientas de edición de imagen */
+.image-editor-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+/* Cursor para crop tool */
+canvas.crop-mode {
+  cursor: crosshair !important;
+}
+
+canvas.crop-mode:active {
+  cursor: grabbing !important;
+}
+
+/* Indicador visual para herramientas activas */
+.bx--btn--primary.bx--btn--sm {
+  box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.3);
+}
+
+.bx--tabs__nav {
+  justify-content: center;
 }
