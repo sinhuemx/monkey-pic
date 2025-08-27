@@ -157,21 +157,36 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # Monkey Pic specific files
-monkey-pic/backend.log
-monkey-pic/frontend.log
+backend.log
+frontend.log
 *.pid
 *.monkey-pic-*
 
-# Python environments
-scripts/ai3d/.venv/
-scripts/ai3d/.venv_old/
-scripts/ai3d/__pycache__/
+# Test files and development artifacts
+test_*
+quick_test*
+*.test.*
+*test*
+
+# Generated 3D files (temporary outputs)
+*.obj
+*.stl
+*.ply
+*.off
+
+# Archive directory (development history)
+archive/
+
+# Python environments (updated paths)
+backend/ai3d/.venv/
+backend/ai3d/.venv_old/
+backend/ai3d/__pycache__/
 **/__pycache__/
 *.pyc
 *.pyo
 
-# Large AI model directories
-scripts/ai3d/triposr/
+# Large AI model directories (updated paths)
+backend/ai3d/triposr/
 *.pt
 *.pth
 *.onnx
